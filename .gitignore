@@ -1,0 +1,37 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+out/
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Java
+*.class
+
+# Sonar
+.sonar/
+
+# Test reports
+test-results/
+test-output/
+
+# Backup files
+*~
+*.swp
+*.bak
+
+# Environment files
+.env

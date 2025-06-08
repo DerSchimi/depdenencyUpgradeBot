@@ -1,4 +1,6 @@
-import java.io.*;
+package de.schimi.gradleupdater;
+
+import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -8,20 +10,32 @@ import java.util.*;
 import java.util.regex.*;
 import java.util.stream.Collectors;
 import org.json.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-public class GradleMinorUpdater {
+public class GradleUpdateService {
 
-    private static final Pattern DEPENDENCY_PATTERN = Pattern.compile(
-        "'([\\w\\-.]+):([\\w\\-.]+):([\\d.]+)'");
+    private static final Logger LOG = LoggerFactory.getLogger(GradleUpdateService.class);
 
-    public static void main(String[] args) throws IOException {
-        System.out.println("Starting Gradle Minor Version Updater...");
-        Path projectDir = Paths.get(".");
-        List<Path> gradleFiles = Files.walk(projectDir)
-            .filter(p -> p.getFileName().toString().equals("build.gradle"))
-            .collect(Collectors.toList());
+    private static final Pattern DEPENDENCY_PATTERN = Pattern.compile("'([\\w\\-.]+):([\\w\\-.]+):([\\d.]+)'");
 
-        for (Path gradleFile : gradleFiles) {
+    public void updateAllBuildGradleFiles() {
+        try {
+            List<Path> gradleFiles = Files.walk(Paths.get("."))
+                .filter(p -> p.getFileName().toString().equals("build.gradle"))
+                .collect(Collectors.toList());
+            LOG.info("Found " + gradleFiles.size() + " build.gradle files.");
+
+            for (Path gradleFile : gradleFiles) {
+                updateGradleFile(gradleFile);
+            }
+        } catch (IOException e) {
+            LOG.info("Error while searching for build.gradle files: " + e.getMessage());
+        }
+    }
+
+    private void updateGradleFile(Path gradleFile) {
+        try {
             String originalContent = Files.readString(gradleFile);
             Matcher matcher = DEPENDENCY_PATTERN.matcher(originalContent);
             StringBuffer newContent = new StringBuffer();
@@ -33,20 +47,24 @@ public class GradleMinorUpdater {
 
                 String updatedVersion = findNewerMinorVersion(group, artifact, currentVersion);
                 if (updatedVersion != null && !updatedVersion.equals(currentVersion)) {
-                    System.out.printf("Updating %s:%s from %s to %s%n", group, artifact, currentVersion, updatedVersion);
+                    LOG.info("Updating {}:{} from {} to {}", group, artifact, currentVersion, updatedVersion);
                     String replacement = "'" + group + ":" + artifact + ":" + updatedVersion + "'";
                     matcher.appendReplacement(newContent, Matcher.quoteReplacement(replacement));
                 } else {
                     matcher.appendReplacement(newContent, Matcher.quoteReplacement(matcher.group(0)));
+                    LOG.info("Skipping " + group + ":" + artifact + " as no newer minor version found or already up-to-date.");
                 }
             }
-
             matcher.appendTail(newContent);
-            Files.writeString(gradleFile, newContent.toString());
+            String newFileName = gradleFile.getFileName().toString()+".updated";
+            Files.writeString(Path.of(newFileName), newContent.toString());
+            LOG.info("Updated file " + gradleFile + " and saved as " + newFileName);
+        } catch (Exception e) {
+            LOG.error("Error updating file " + gradleFile + ": " + e.getMessage());
         }
     }
 
-    private static String findNewerMinorVersion(String group, String artifact, String currentVersion) {
+    private String findNewerMinorVersion(String group, String artifact, String currentVersion) {
         try {
             String[] parts = currentVersion.split("\\.");
             if (parts.length < 2) return null;
@@ -79,7 +97,7 @@ public class GradleMinorUpdater {
             }
 
             if (!newerMinorVersions.isEmpty()) {
-                System.out.println("Found newer minor versions: " + newerMinorVersions);
+                LOG.info("Found newer minor versions: " + newerMinorVersions + " for " + group + ":" + artifact);
             }
 
             return newerMinorVersions.stream()
@@ -94,12 +112,12 @@ public class GradleMinorUpdater {
                 })                .orElse(null);
 
         } catch (Exception e) {
-            System.err.printf("Error fetching version for %s:%s → %s%n", group, artifact, e.getMessage());
+            LOG.error("Error fetching version for %s:%s → %s%n", group, artifact, e.getMessage());
             return null;
         }
     }
 
-    private static List<Integer> versionToTuple(String version) {
+    private List<Integer> versionToTuple(String version) {
         return Arrays.stream(version.split("\\."))
             .map(s -> {
                 try {
